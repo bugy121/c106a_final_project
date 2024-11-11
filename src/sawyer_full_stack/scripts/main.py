@@ -104,7 +104,7 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, args):
 
     if task == 'line':
         target_pos = tag_pos[0]
-        target_pos[2] += 0.4 #linear path moves to a Z position above AR Tag.
+        # target_pos[2] += 0.4 #linear path moves to a Z position above AR Tag.
         print("TARGET POSITION:", target_pos)
         trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=9)
     elif task == 'circle':
@@ -126,7 +126,8 @@ def get_controller(controller_name, limb, kin):
     Parameters
     ----------
     controller_name : string
-
+e AR tag position.
+    tag_pos = [lookup_tag(marker) 
     Returns
     -------
     :obj:`Controller`
@@ -197,7 +198,9 @@ def main():
     # positions and velocities are workspace positions and velocities.  If the controller
     # is a jointspace or torque controller, it should return a trajectory where the positions
     # and velocities are the positions and velocities of each joint.
-    robot_trajectory = get_trajectory(limb, kin, ik_solver, tag_pos, args)
+    curr_tag_pos = [list(tag_pos[0])]
+    curr_tag_pos[0][2] += 0.4
+    robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
 
     # This is a wrapper around MoveIt! for you to use.  We use MoveIt! to go to the start position
     # of the trajectory
@@ -225,6 +228,31 @@ def main():
             sys.exit()
         # Uses MoveIt! to execute the trajectory.
         planner.execute_plan(robot_trajectory)
+
+        input('Open the gripper')
+        gripper = intera_interface.Gripper('right_gripper')
+        gripper.open()
+
+        input('Begin moving downward')
+        curr_tag_pos = [list(tag_pos[0])]
+        curr_tag_pos[0][2] += 0.2
+        robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
+        planner.execute_plan(robot_trajectory)
+
+        input('Close the gripper')
+        gripper = intera_interface.Gripper('right_gripper')
+        gripper.close()
+
+        input('Begin moving upward')
+        curr_tag_pos = [list(tag_pos[0])]
+        curr_tag_pos[0][2] += 0.4
+        robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
+        planner.execute_plan(robot_trajectory)
+
+        input('Open the gripper')
+        gripper = intera_interface.Gripper('right_gripper')
+        gripper.open()
+
     else:
         controller = get_controller(args.controller_name, limb, kin)
         try:
@@ -242,5 +270,26 @@ def main():
             print('Failed to move to position')
             sys.exit(0)
 
+    # END# 2. move gripper above the block
+
+
 if __name__ == "__main__":
     main()
+
+
+
+# each block-stacking motion consists of
+# 1. look for current block
+# 2. move gripper above the block
+# 3. move down
+# 4. close gripper
+# 5. move up
+# 6. move sideways to somewhere above the stack
+# 7. move down (depend on current height of stack)
+# 8. release gripper
+# 9. go back to home position
+
+# while (not stacked)
+#   look at current state
+#   plan = ... (stack block i)
+#   execute = ...
