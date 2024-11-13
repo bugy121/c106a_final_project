@@ -31,16 +31,16 @@ def tuck():
     """
     Tuck the robot arm to the start position. Use with caution
     """
-    if input('Would you like to tuck the arm? (y/n): ') == 'y':
-        rospack = rospkg.RosPack()
-        path = rospack.get_path('sawyer_full_stack')
-        launch_path = path + '/launch/custom_sawyer_tuck.launch'
-        uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
-        roslaunch.configure_logging(uuid)
-        launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
-        launch.start()
-    else:
-        print('Canceled. Not tucking the arm.')
+    # if input('Would you like to tuck the arm? (y/n): ') == 'y':
+    rospack = rospkg.RosPack()
+    path = rospack.get_path('sawyer_full_stack')
+    launch_path = path + '/launch/custom_sawyer_tuck.launch'
+    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+    roslaunch.configure_logging(uuid)
+    launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
+    launch.start()
+    # else:
+    #     print('Canceled. Not tucking the arm.')
 
 def lookup_tag(tag_number):
     """
@@ -94,19 +94,21 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, args):
     tfBuffer = tf2_ros.Buffer()
     listener = tf2_ros.TransformListener(tfBuffer)
 
+    # lookup transform from base to right_hand
     try:
         trans = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
     except Exception as e:
         print(e)
 
+    # current x,y,z position of robot arm relative to base
     current_position = np.array([getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')])
     print("Current Position:", current_position)
 
     if task == 'line':
         target_pos = tag_pos[0]
         # target_pos[2] += 0.4 #linear path moves to a Z position above AR Tag.
-        print("TARGET POSITION:", target_pos)
-        trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=9)
+        # print("TARGET POSITION:", target_pos)
+        trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=3)
     elif task == 'circle':
         target_pos = tag_pos[0]
         target_pos[2] += 0.5
@@ -126,7 +128,6 @@ def get_controller(controller_name, limb, kin):
     Parameters
     ----------
     controller_name : string
-e AR tag position.
     tag_pos = [lookup_tag(marker) 
     Returns
     -------
@@ -183,6 +184,7 @@ def main():
 
     rospy.init_node('moveit_node')
     
+    input('Tuck the arm')
     tuck()
     
     # this is used for sending commands (velocity, torque, etc) to the robot
@@ -190,43 +192,26 @@ def main():
     limb = intera_interface.Limb("right")
     kin = sawyer_kinematics("right")
 
-    # Lookup the AR tag position.
-    tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
-
-    # Get an appropriate RobotTrajectory for the task (circular, linear, or square)
-    # If the controller is a workspace controller, this should return a trajectory where the
-    # positions and velocities are workspace positions and velocities.  If the controller
-    # is a jointspace or torque controller, it should return a trajectory where the positions
-    # and velocities are the positions and velocities of each joint.
-    curr_tag_pos = [list(tag_pos[0])]
-    curr_tag_pos[0][2] += 0.4
-    robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
-
-    # This is a wrapper around MoveIt! for you to use.  We use MoveIt! to go to the start position
-    # of the trajectory
-    planner = PathPlanner('right_arm')
-    
-    # By publishing the trajectory to the move_group/display_planned_path topic, you should 
-    # be able to view it in RViz.  You will have to click the "loop animation" setting in 
-    # the planned path section of MoveIt! in the menu on the left side of the screen.
-    pub = rospy.Publisher('move_group/display_planned_path', DisplayTrajectory, queue_size=10)
-    disp_traj = DisplayTrajectory()
-    disp_traj.trajectory.append(robot_trajectory)
-    disp_traj.trajectory_start = RobotState()
-    pub.publish(disp_traj)
-
-    # Move to the trajectory start position
-    plan = planner.plan_to_joint_pos(robot_trajectory.joint_trajectory.points[0].positions)
-    if args.controller_name != "moveit":
-        plan = planner.retime_trajectory(plan, 0.3)
-    planner.execute_plan(plan[1])
 
     if args.controller_name == "moveit":
-        try:
-            input('Press <Enter> to execute the trajectory using MOVEIT')
-        except KeyboardInterrupt:
-            sys.exit()
-        # Uses MoveIt! to execute the trajectory.
+
+        # Lookup the AR tag position.
+        tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
+
+        # Moveit planner
+        planner = PathPlanner('right_arm')
+        
+        # Get the trajectory from the robot arm to above the cube
+        curr_tag_pos = [list(tag_pos[0])]
+        curr_tag_pos[0][2] += 0.4
+        robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
+
+        input('Move to starting position of trajectory')
+        trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
+        plan = planner.plan_to_joint_pos(trajectory_start_pos)
+        planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
+
+        input('Move to above the cube') 
         planner.execute_plan(robot_trajectory)
 
         input('Open the gripper')
@@ -235,7 +220,7 @@ def main():
 
         input('Begin moving downward')
         curr_tag_pos = [list(tag_pos[0])]
-        curr_tag_pos[0][2] += 0.2
+        curr_tag_pos[0][2] += 0.17
         robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
         planner.execute_plan(robot_trajectory)
 
@@ -270,11 +255,20 @@ def main():
             print('Failed to move to position')
             sys.exit(0)
 
-    # END# 2. move gripper above the block
-
 
 if __name__ == "__main__":
     main()
+
+
+# Publish trajectory to the move_group/display_planned_path topic in Rviz
+# pub = rospy.Publisher('move_group/display_planned_path', DisplayTrajectory, queue_size=10)
+# disp_traj = DisplayTrajectory()
+# disp_traj.trajectory.append(robot_trajectory)
+# disp_traj.trajectory_start = RobotState()
+# pub.publish(disp_traj)
+
+# if args.controller_name != "moveit":
+#     plan = planner.retime_trajectory(plan, 0.3)
 
 
 
