@@ -26,6 +26,10 @@ import intera_interface
 from moveit_msgs.msg import DisplayTrajectory, RobotState
 from sawyer_pykdl import sawyer_kinematics
 
+from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest, GetPositionIKResponse
+from geometry_msgs.msg import PoseStamped
+from moveit_commander import MoveGroupCommander
+
 
 def tuck():
     """
@@ -42,7 +46,7 @@ def tuck():
     # else:
     #     print('Canceled. Not tucking the arm.')
 
-def lookup_tag(tag_number):
+def lookup_tag(tag_number, limb, kin, ik_solver, planner, args):
     """
     Given an AR tag number, this returns the position of the AR tag in the robot's base frame.
     You can use either this function or try starting the scripts/tag_pub.py script.  More info
@@ -61,14 +65,78 @@ def lookup_tag(tag_number):
     tfBuffer = tf2_ros.Buffer()
     tfListener = tf2_ros.TransformListener(tfBuffer)
 
-    try:
-        # TODO: lookup the transform and save it in trans
-        # The rospy.Time(0) is the latest available 
-        # The rospy.Duration(10.0) is the amount of time to wait for the transform to be available before throwing an exception
-        trans = tfBuffer.lookup_transform("base", "ar_marker_"+str(tag_number), rospy.Time(0), rospy.Duration(10.0))
-    except Exception as e:
-        print(e)
-        print("Retrying ...")
+    found_ar_tag = False
+    while not found_ar_tag:
+    # for iter in interations and not found_ar_tag:
+        try:
+            # TODO: lookup the transform and save it in trans
+            # The rospy.Time(0) is the latest available 
+            # The rospy.Duration(10.0) is the amount of time to wait for the transform to be available before throwing an exception
+            trans = tfBuffer.lookup_transform("base", "ar_marker_"+str(tag_number), rospy.Time(0), rospy.Duration(10.0))
+            found_ar_tag = True
+        except Exception as e:
+            print(e)
+            print("Retrying ...")
+
+            ### ATTEMPT 1 ###
+            # # Try moving left to find the AR tag 
+            # trans_base_arm = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
+            # curr_arm_pos = np.array([getattr(trans_base_arm.transform.translation, dim) for dim in ('x', 'y', 'z')])
+            # new_arm_pos = np.array([curr_arm_pos[0], curr_arm_pos[1] + 0.1, curr_arm_pos[2]])
+            # # debug:
+            # # new_arm_pos = [0.6997413608390327, 0.04754310973086273, 0.21876114330591026]
+            # print("CURRENT POS:", curr_arm_pos)
+            # print("TARGET POS:", new_arm_pos)
+            # # robot_trajectory = get_trajectory(limb, kin, ik_solver, arm_pos, args)
+            # trajectory = LinearTrajectory(start_position=curr_arm_pos, goal_position=new_arm_pos, total_time=10)
+            # path = MotionPath(limb, kin, ik_solver, trajectory)
+            # robot_trajectory = path.to_robot_trajectory(args.num_way, True)
+
+            # input('Move to starting position of trajectory')
+            # breakpoint()
+            # trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
+            # plan = planner.plan_to_joint_pos(trajectory_start_pos)
+            # planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
+
+            # input('Searching for AR tag')
+            # planner.execute_plan(robot_trajectory)
+
+            request = GetPositionIKRequest()
+            request.ik_request.group_name = 'right_arm'
+            link = 'right_gripper_tip'
+            request.ik_request.ik_link_name = link
+            request.ik_request.pose_stamped.header.frame_id = 'base'
+
+            trans_base_arm = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
+            curr_arm_pos = np.array([getattr(trans_base_arm.transform.translation, dim) for dim in ('x', 'y', 'z')])
+            curr_arm_orientation = np.array([getattr(trans_base_arm.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
+            # new_arm_pos = np.array([curr_arm_pos[0], curr_arm_pos[1] + 0.1, curr_arm_pos[2]])    
+
+            request.ik_request.pose_stamped.pose.position.x = curr_arm_pos[0] + 0.1
+            request.ik_request.pose_stamped.pose.position.y = curr_arm_pos[1] - 0.2
+            request.ik_request.pose_stamped.pose.position.z = curr_arm_pos[2]   
+            request.ik_request.pose_stamped.pose.orientation.x = curr_arm_orientation[0]
+            request.ik_request.pose_stamped.pose.orientation.y = curr_arm_orientation[1]
+            request.ik_request.pose_stamped.pose.orientation.z = curr_arm_orientation[2]
+            request.ik_request.pose_stamped.pose.orientation.w = curr_arm_orientation[3]
+
+            compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
+
+            try:
+                response = compute_ik(request)
+                print(response)
+                group = MoveGroupCommander("right_arm")
+
+                # Setting position and orientation target
+                group.set_pose_target(request.ik_request.pose_stamped)
+
+                # Plan IK
+                plan = group.plan()
+                input("Finding AR tag")
+                group.execute(plan[1])
+                
+            except rospy.ServiceException as e:
+                print("Service call failed: ", e)
 
     tag_pos = [getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')]
     return np.array(tag_pos)
@@ -102,12 +170,14 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, args):
 
     # current x,y,z position of robot arm relative to base
     current_position = np.array([getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')])
-    print("Current Position:", current_position)
+    current_orientation = np.array([getattr(trans.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
 
     if task == 'line':
         target_pos = tag_pos[0]
         # target_pos[2] += 0.4 #linear path moves to a Z position above AR Tag.
-        # print("TARGET POSITION:", target_pos)
+        print("CURRENT POSITION:", current_position)
+        print("CURRENT ORITENTATION:", current_orientation)
+        print("TARGET POSITION:", target_pos)
         trajectory = LinearTrajectory(start_position=current_position, goal_position=target_pos, total_time=3)
     elif task == 'circle':
         target_pos = tag_pos[0]
@@ -119,7 +189,8 @@ def get_trajectory(limb, kin, ik_solver, tag_pos, args):
         raise ValueError('task {} not recognized'.format(task))
     
     path = MotionPath(limb, kin, ik_solver, trajectory)
-    return path.to_robot_trajectory(num_way, True)
+    robot_trajectory = path.to_robot_trajectory(num_way, True)
+    return robot_trajectory
 
 def get_controller(controller_name, limb, kin):
     """
@@ -144,6 +215,47 @@ def get_controller(controller_name, limb, kin):
     else:
         raise ValueError('Controller {} not recognized'.format(controller_name))
     return controller
+
+def get_current_pos_orientation():
+    tfBuffer = tf2_ros.Buffer()
+    tfListener = tf2_ros.TransformListener(tfBuffer)
+    trans_base_arm = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
+    curr_arm_pos = np.array([getattr(trans_base_arm.transform.translation, dim) for dim in ('x', 'y', 'z')])
+    curr_arm_orientation = np.array([getattr(trans_base_arm.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
+    return curr_arm_pos, curr_arm_orientation
+
+def move_to(position, orientation):
+    request = GetPositionIKRequest()
+    request.ik_request.group_name = 'right_arm'
+    link = 'right_gripper_tip'
+    request.ik_request.ik_link_name = link
+    request.ik_request.pose_stamped.header.frame_id = 'base'
+
+    request.ik_request.pose_stamped.pose.position.x = position[0]
+    request.ik_request.pose_stamped.pose.position.y = position[1]
+    request.ik_request.pose_stamped.pose.position.z = position[2]
+    request.ik_request.pose_stamped.pose.orientation.x = orientation[0]
+    request.ik_request.pose_stamped.pose.orientation.y = orientation[1]
+    request.ik_request.pose_stamped.pose.orientation.z = orientation[2]
+    request.ik_request.pose_stamped.pose.orientation.w = orientation[3]
+
+    compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
+
+    try:
+        response = compute_ik(request)
+        print(response)
+        group = MoveGroupCommander("right_arm")
+
+        # Setting position and orientation target
+        group.set_pose_target(request.ik_request.pose_stamped)
+
+        # Plan IK
+        plan = group.plan()
+        print("Moving to", position, orientation)
+        group.execute(plan[1])
+        
+    except rospy.ServiceException as e:
+        print("Service call failed: ", e)
 
 
 def main():
@@ -195,11 +307,11 @@ def main():
 
     if args.controller_name == "moveit":
 
-        # Lookup the AR tag position.
-        tag_pos = [lookup_tag(marker) for marker in args.ar_marker]
-
         # Moveit planner
         planner = PathPlanner('right_arm')
+
+        # Lookup the AR tag position.
+        tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in args.ar_marker]
         
         # Get the trajectory from the robot arm to above the cube
         curr_tag_pos = [list(tag_pos[0])]
@@ -225,7 +337,9 @@ def main():
         planner.execute_plan(robot_trajectory)
 
         input('Close the gripper')
+        gripper = intera_interface.Gripper('right_gripper')        input('Open the gripper')
         gripper = intera_interface.Gripper('right_gripper')
+        gripper.open()
         gripper.close()
 
         input('Begin moving upward')
@@ -234,10 +348,16 @@ def main():
         robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
         planner.execute_plan(robot_trajectory)
 
+        curr_pos, curr_orient = get_current_pos_orientation()
+        print(curr_pos, curr_orient)
+        target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
+        input('Move to stack postion')
+        move_to(target_pos, curr_orient)
+
         input('Open the gripper')
         gripper = intera_interface.Gripper('right_gripper')
         gripper.open()
-
+    
     else:
         controller = get_controller(args.controller_name, limb, kin)
         try:
