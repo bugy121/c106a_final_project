@@ -30,21 +30,25 @@ from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest, GetPositionIKRe
 from geometry_msgs.msg import PoseStamped
 from moveit_commander import MoveGroupCommander
 
+import os
+
 
 def tuck():
     """
     Tuck the robot arm to the start position. Use with caution
     """
     # if input('Would you like to tuck the arm? (y/n): ') == 'y':
-    rospack = rospkg.RosPack()
-    path = rospack.get_path('sawyer_full_stack')
-    launch_path = path + '/launch/custom_sawyer_tuck.launch'
-    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
-    roslaunch.configure_logging(uuid)
-    launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
-    launch.start()
+    # rospack = rospkg.RosPack()
+    # path = rospack.get_path('sawyer_full_stack')
+    # launch_path = path + '/launch/custom_sawyer_tuck.launch'
+    # uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+    # roslaunch.configure_logging(uuid)
+    # launch = roslaunch.parent.ROSLaunchParent(uuid, [launch_path])
+    # launch.start()
     # else:
     #     print('Canceled. Not tucking the arm.')
+    os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
+    os.system("./set_joint_speed.py")
 
 def lookup_tag(tag_number, limb, kin, ik_solver, planner, args):
     """
@@ -318,6 +322,9 @@ def main():
         curr_tag_pos[0][2] += 0.4
         robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
 
+        # input('Tuck the arm')
+        # tuck()
+
         input('Move to starting position of trajectory')
         trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
         plan = planner.plan_to_joint_pos(trajectory_start_pos)
@@ -337,9 +344,7 @@ def main():
         planner.execute_plan(robot_trajectory)
 
         input('Close the gripper')
-        gripper = intera_interface.Gripper('right_gripper')        input('Open the gripper')
-        gripper = intera_interface.Gripper('right_gripper')
-        gripper.open()
+        gripper = intera_interface.Gripper('right_gripper')        
         gripper.close()
 
         input('Begin moving upward')
@@ -348,15 +353,34 @@ def main():
         robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
         planner.execute_plan(robot_trajectory)
 
+        # curr_pos, curr_orient = get_current_pos_orientation()
+        # print(curr_pos, curr_orient)
+        # target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
+        target_pos = np.array([0.74, 0.3, 0.16])
+        target_orientation = np.array([0.0,1.0,0.0,0.0])
+        input('Move to stack postion')
+        move_to(target_pos, target_orientation)
+
         curr_pos, curr_orient = get_current_pos_orientation()
         print(curr_pos, curr_orient)
-        target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
-        input('Move to stack postion')
+        target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.43])
+        input('Moving down')
         move_to(target_pos, curr_orient)
 
         input('Open the gripper')
         gripper = intera_interface.Gripper('right_gripper')
         gripper.open()
+
+        curr_pos, curr_orient = get_current_pos_orientation()
+        print(curr_pos, curr_orient)
+        target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.3])
+        input('Moving up')
+        move_to(curr_pos, curr_orient)
+
+        input('Tuck the arm')
+        tuck()
+        # os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
+        # os.system("./set_joint_speed.py")
     
     else:
         controller = get_controller(args.controller_name, limb, kin)
