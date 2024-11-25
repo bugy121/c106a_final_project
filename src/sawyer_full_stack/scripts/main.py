@@ -311,18 +311,24 @@ def main():
 
     if args.controller_name == "moveit":
 
-        for i in range(2):
+        for i in range(5):
     
             # Moveit planner
             planner = PathPlanner('right_arm')
 
             # Lookup the AR tag position.
             tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+
+            input(f"ITERATION {i} AR TAG POS: {tag_pos[0]}")
+            # ITERATION 0 AR TAG POS: [ 0.78945311 -0.26583711 -0.23792368]
+            # ITERATION 1 AR TAG POS: [ 0.7069352  -0.24560152 -0.18347042]
             
             # Get the trajectory from the robot arm to above the cube
             curr_tag_pos = [list(tag_pos[0])]
             curr_tag_pos[0][2] += 0.3
+            curr_tag_pos[0][1] += 0.02
             target_pos = curr_tag_pos[0]
+            input("Moving to above the block")
             move_to(target_pos)
             #robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
 
@@ -343,7 +349,9 @@ def main():
 
             input('Begin moving downward')
             curr_tag_pos = [list(tag_pos[0])]
-            curr_tag_pos[0][2] += 0.03
+            curr_tag_pos[0][2] += 0.05
+            curr_tag_pos[0][1] += 0.02
+
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
             move_to(curr_tag_pos[0])
@@ -362,14 +370,21 @@ def main():
             # curr_pos, curr_orient = get_current_pos_orientation()
             # print(curr_pos, curr_orient)
             # target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
-            target_pos = np.array([0.74, 0.3, 0.16])
-            target_orientation = np.array([0.0,1.0,0.0,0.0])
+            if i == 0:
+                target_pos = np.array([0.74, 0.3, 0.16])                # use hard-cose pos on first block
+                target_orientation = np.array([0.0,1.0,0.0,0.0])
+            else:
+                target_pos = [prev_dropped_pos[0], prev_dropped_pos[1], 0.16]
+                target_orientation = np.array([0.0,1.0,0.0,0.0])
             input('Move to stack postion')
             move_to(target_pos, target_orientation)
 
             curr_pos, curr_orient = get_current_pos_orientation()
             print(curr_pos, curr_orient)
-            target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.43 + i*0.1])
+            if i == 0:
+                target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.45])
+            else:
+                target_pos = np.array([curr_pos[0], curr_pos[1], prev_dropped_pos[2] + 0.05])
             input('Moving down')
             move_to(target_pos, curr_orient)
 
@@ -381,7 +396,19 @@ def main():
             print(curr_pos, curr_orient)
             target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.3])
             input('Moving up')
-            move_to(curr_pos, curr_orient)
+            move_to(target_pos, curr_orient)
+
+            curr_pos, curr_orient = get_current_pos_orientation()
+            print(curr_pos, curr_orient)
+            target_pos = [curr_pos[0] + 0.2, curr_pos[1], curr_pos[2]]
+            target_orientation = [0.0, np.sqrt(2)/2, 0.0, np.sqrt(2)/2]
+            input('Rotate camera')
+            move_to(target_pos, target_orientation)
+
+            tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            curr_tag_pos = list(tag_pos[0])
+            prev_dropped_pos = curr_tag_pos
+            print("Dropped postion:", prev_dropped_pos)
 
             input('Tuck the arm')
             tuck()
