@@ -228,7 +228,7 @@ def get_current_pos_orientation():
     curr_arm_orientation = np.array([getattr(trans_base_arm.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
     return curr_arm_pos, curr_arm_orientation
 
-def move_to(position, orientation):
+def move_to(position, orientation=[0.0, 1.0, 0.0 ,0.0]):
     request = GetPositionIKRequest()
     request.ik_request.group_name = 'right_arm'
     link = 'right_gripper_tip'
@@ -321,19 +321,21 @@ def main():
             
             # Get the trajectory from the robot arm to above the cube
             curr_tag_pos = [list(tag_pos[0])]
-            curr_tag_pos[0][2] += 0.4
-            robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
+            curr_tag_pos[0][2] += 0.3
+            target_pos = curr_tag_pos[0]
+            move_to(target_pos)
+            #robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
 
             # input('Tuck the arm')
             # tuck()
 
-            input('Move to starting position of trajectory')
-            trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
-            plan = planner.plan_to_joint_pos(trajectory_start_pos)
-            planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
+            # input('Move to starting position of trajectory')
+            # trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
+            # plan = planner.plan_to_joint_pos(trajectory_start_pos)
+            # planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
 
-            input('Move to above the cube') 
-            planner.execute_plan(robot_trajectory)
+            # input('Move to above the cube') 
+            # planner.execute_plan(robot_trajectory)
 
             input('Open the gripper')
             gripper = intera_interface.Gripper('right_gripper')
@@ -341,9 +343,10 @@ def main():
 
             input('Begin moving downward')
             curr_tag_pos = [list(tag_pos[0])]
-            curr_tag_pos[0][2] += 0.17
-            robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
-            planner.execute_plan(robot_trajectory)
+            curr_tag_pos[0][2] += 0.03
+            # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
+            # planner.execute_plan(robot_trajectory)
+            move_to(curr_tag_pos[0])
 
             input('Close the gripper')
             gripper = intera_interface.Gripper('right_gripper')        
@@ -352,8 +355,9 @@ def main():
             input('Begin moving upward')
             curr_tag_pos = [list(tag_pos[0])]
             curr_tag_pos[0][2] += 0.4
-            robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
-            planner.execute_plan(robot_trajectory)
+            # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
+            # planner.execute_plan(robot_trajectory)
+            move_to(curr_tag_pos[0])
 
             # curr_pos, curr_orient = get_current_pos_orientation()
             # print(curr_pos, curr_orient)
