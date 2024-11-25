@@ -311,77 +311,79 @@ def main():
 
     if args.controller_name == "moveit":
 
-        # Moveit planner
-        planner = PathPlanner('right_arm')
-
-        # Lookup the AR tag position.
-        tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in args.ar_marker]
-        
-        # Get the trajectory from the robot arm to above the cube
-        curr_tag_pos = [list(tag_pos[0])]
-        curr_tag_pos[0][2] += 0.4
-        robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
-
-        # input('Tuck the arm')
-        # tuck()
-
-        input('Move to starting position of trajectory')
-        trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
-        plan = planner.plan_to_joint_pos(trajectory_start_pos)
-        planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
-
-        input('Move to above the cube') 
-        planner.execute_plan(robot_trajectory)
-
-        input('Open the gripper')
-        gripper = intera_interface.Gripper('right_gripper')
-        gripper.open()
-
-        input('Begin moving downward')
-        curr_tag_pos = [list(tag_pos[0])]
-        curr_tag_pos[0][2] += 0.17
-        robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
-        planner.execute_plan(robot_trajectory)
-
-        input('Close the gripper')
-        gripper = intera_interface.Gripper('right_gripper')        
-        gripper.close()
-
-        input('Begin moving upward')
-        curr_tag_pos = [list(tag_pos[0])]
-        curr_tag_pos[0][2] += 0.4
-        robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
-        planner.execute_plan(robot_trajectory)
-
-        # curr_pos, curr_orient = get_current_pos_orientation()
-        # print(curr_pos, curr_orient)
-        # target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
-        target_pos = np.array([0.74, 0.3, 0.16])
-        target_orientation = np.array([0.0,1.0,0.0,0.0])
-        input('Move to stack postion')
-        move_to(target_pos, target_orientation)
-
-        curr_pos, curr_orient = get_current_pos_orientation()
-        print(curr_pos, curr_orient)
-        target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.43])
-        input('Moving down')
-        move_to(target_pos, curr_orient)
-
-        input('Open the gripper')
-        gripper = intera_interface.Gripper('right_gripper')
-        gripper.open()
-
-        curr_pos, curr_orient = get_current_pos_orientation()
-        print(curr_pos, curr_orient)
-        target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.3])
-        input('Moving up')
-        move_to(curr_pos, curr_orient)
-
-        input('Tuck the arm')
-        tuck()
-        # os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
-        # os.system("./set_joint_speed.py")
+        for i in range(2):
     
+            # Moveit planner
+            planner = PathPlanner('right_arm')
+
+            # Lookup the AR tag position.
+            tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            
+            # Get the trajectory from the robot arm to above the cube
+            curr_tag_pos = [list(tag_pos[0])]
+            curr_tag_pos[0][2] += 0.4
+            robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
+
+            # input('Tuck the arm')
+            # tuck()
+
+            input('Move to starting position of trajectory')
+            trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
+            plan = planner.plan_to_joint_pos(trajectory_start_pos)
+            planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
+
+            input('Move to above the cube') 
+            planner.execute_plan(robot_trajectory)
+
+            input('Open the gripper')
+            gripper = intera_interface.Gripper('right_gripper')
+            gripper.open()
+
+            input('Begin moving downward')
+            curr_tag_pos = [list(tag_pos[0])]
+            curr_tag_pos[0][2] += 0.17
+            robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
+            planner.execute_plan(robot_trajectory)
+
+            input('Close the gripper')
+            gripper = intera_interface.Gripper('right_gripper')        
+            gripper.close()
+
+            input('Begin moving upward')
+            curr_tag_pos = [list(tag_pos[0])]
+            curr_tag_pos[0][2] += 0.4
+            robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
+            planner.execute_plan(robot_trajectory)
+
+            # curr_pos, curr_orient = get_current_pos_orientation()
+            # print(curr_pos, curr_orient)
+            # target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
+            target_pos = np.array([0.74, 0.3, 0.16])
+            target_orientation = np.array([0.0,1.0,0.0,0.0])
+            input('Move to stack postion')
+            move_to(target_pos, target_orientation)
+
+            curr_pos, curr_orient = get_current_pos_orientation()
+            print(curr_pos, curr_orient)
+            target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.43 + i*0.1])
+            input('Moving down')
+            move_to(target_pos, curr_orient)
+
+            input('Open the gripper')
+            gripper = intera_interface.Gripper('right_gripper')
+            gripper.open()
+
+            curr_pos, curr_orient = get_current_pos_orientation()
+            print(curr_pos, curr_orient)
+            target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.3])
+            input('Moving up')
+            move_to(curr_pos, curr_orient)
+
+            input('Tuck the arm')
+            tuck()
+            # os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
+            # os.system("./set_joint_speed.py")
+        
     else:
         controller = get_controller(args.controller_name, limb, kin)
         try:
