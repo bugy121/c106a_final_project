@@ -231,6 +231,7 @@ def get_current_pos_orientation():
     return curr_arm_pos, curr_arm_orientation
 
 def move_to(position, orientation=[0.0, 1.0, 0.0 ,0.0]):
+    print("Moving to", position, orientation)
     request = GetPositionIKRequest()
     request.ik_request.group_name = 'right_arm'
     link = 'right_gripper_tip'
@@ -257,7 +258,6 @@ def move_to(position, orientation=[0.0, 1.0, 0.0 ,0.0]):
 
         # Plan IK
         plan = group.plan()
-        print("Moving to", position, orientation)
         group.execute(plan[1])
         
     except rospy.ServiceException as e:
@@ -362,7 +362,8 @@ def main():
             # (new_row, new_pitch, new_yaw) = tf.transformations.euler_from_quaternion(target_tag_orientation)
             input('Begin moving downward')
             curr_tag_pos = [list(tag_pos[0])]
-            curr_tag_pos[0][2] += 0.05
+            # curr_tag_pos[0][2] += 0.05
+            curr_tag_pos[0][2] = -0.16  # HARDCODE TABLE HEIGHT
             curr_tag_pos[0][1] += 0.02
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
@@ -383,6 +384,7 @@ def main():
             # planner.execute_plan(robot_trajectory)
             move_to(curr_tag_pos[0], target_tag_orientation)
 
+            # Moving to above the stack position
             # curr_pos, curr_orient = get_current_pos_orientation()
             # print(curr_pos, curr_orient)
             # target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
@@ -390,9 +392,9 @@ def main():
                 target_pos = np.array([0.74, 0.3, 0.16])                # use hard-cose pos on first block
                 target_orientation = np.array([0.0,1.0,0.0,0.0])
             else:
-                target_pos = [prev_dropped_pos[0], prev_dropped_pos[1], 0.16]
+                target_pos = [prev_dropped_pos[0], prev_dropped_pos[1], 0.16]   # only care about x,y position, height is above the stack location
                 target_orientation = np.array([0.0,1.0,0.0,0.0])
-            input('Move to stack postion')
+            input('Move to above the stack postion')
             move_to(target_pos, target_orientation)
 
             curr_pos, curr_orient = get_current_pos_orientation()
@@ -400,7 +402,7 @@ def main():
             if i == 0:
                 target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.45])
             else:
-                target_pos = np.array([curr_pos[0], curr_pos[1], prev_dropped_pos[2] + 0.05])
+                target_pos = np.array([curr_pos[0], curr_pos[1], prev_dropped_pos[2] + 0.05])       # prev_dropped_height + delta
             input('Moving down')
             move_to(target_pos, curr_orient)
 
@@ -421,7 +423,9 @@ def main():
             input('Rotate camera')
             move_to(target_pos, target_orientation)
 
-            tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            tag_pos = [data[0] for data in tag_pos_and_orient]
+            tag_orient = [data[1] for data in tag_pos_and_orient]
             curr_tag_pos = list(tag_pos[0])
             prev_dropped_pos = curr_tag_pos
             print("Dropped postion:", prev_dropped_pos)
