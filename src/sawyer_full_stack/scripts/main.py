@@ -31,6 +31,7 @@ from geometry_msgs.msg import PoseStamped
 from moveit_commander import MoveGroupCommander
 
 import os
+import tf
 
 
 def tuck():
@@ -143,7 +144,8 @@ def lookup_tag(tag_number, limb, kin, ik_solver, planner, args):
                 print("Service call failed: ", e)
 
     tag_pos = [getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')]
-    return np.array(tag_pos)
+    tag_orientation = [getattr(trans.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')]
+    return (np.array(tag_pos), np.array(tag_orientation))
 
 def get_trajectory(limb, kin, ik_solver, tag_pos, args):
     """
@@ -317,7 +319,11 @@ def main():
             planner = PathPlanner('right_arm')
 
             # Lookup the AR tag position.
-            tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            # tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            # [0.5542645905705363, -0.2634062656404528, -0.1872946122276515]
+            tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            tag_pos = [data[0] for data in tag_pos_and_orient]
+            tag_orient = [data[1] for data in tag_pos_and_orient]
 
             input(f"ITERATION {i} AR TAG POS: {tag_pos[0]}")
             # ITERATION 0 AR TAG POS: [ 0.78945311 -0.26583711 -0.23792368]
@@ -347,25 +353,35 @@ def main():
             gripper = intera_interface.Gripper('right_gripper')
             gripper.open()
 
+            # Move down to the block, while also rotate gripper to match the block's orientation (screw motion)
+            curr_tag_orient = list(tag_orient[0])
+            (tag_row, tag_pitch, tag_yaw) = tf.transformations.euler_from_quaternion(curr_tag_orient)
+            curr_arm_pos, curr_arm_orient = get_current_pos_orientation()
+            (row, pitch, yaw) = tf.transformations.euler_from_quaternion(curr_arm_orient)
+            target_tag_orientation = tf.transformations.quaternion_from_euler(row, pitch, yaw+tag_yaw%(np.pi/2))
+            # (new_row, new_pitch, new_yaw) = tf.transformations.euler_from_quaternion(target_tag_orientation)
             input('Begin moving downward')
             curr_tag_pos = [list(tag_pos[0])]
             curr_tag_pos[0][2] += 0.05
             curr_tag_pos[0][1] += 0.02
-
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
-            move_to(curr_tag_pos[0])
+            move_to(curr_tag_pos[0], target_tag_orientation)
 
             input('Close the gripper')
             gripper = intera_interface.Gripper('right_gripper')        
             gripper.close()
 
             input('Begin moving upward')
+            _, curr_arm_orient = get_current_pos_orientation()
+            (row, pitch, yaw) = tf.transformations.euler_from_quaternion(curr_arm_orient)
+            target_tag_orientation = tf.transformations.quaternion_from_euler(row, pitch, yaw-tag_yaw%(np.pi/2))
+            # (new_row, new_pitch, new_yaw) = tf.transformations.euler_from_quaternion(target_tag_orientation)
             curr_tag_pos = [list(tag_pos[0])]
             curr_tag_pos[0][2] += 0.4
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
-            move_to(curr_tag_pos[0])
+            move_to(curr_tag_pos[0], target_tag_orientation)
 
             # curr_pos, curr_orient = get_current_pos_orientation()
             # print(curr_pos, curr_orient)
