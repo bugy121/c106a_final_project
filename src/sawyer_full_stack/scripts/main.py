@@ -32,6 +32,7 @@ from moveit_commander import MoveGroupCommander
 
 import os
 import tf
+import intera_interface
 
 
 def tuck():
@@ -231,7 +232,7 @@ def get_current_pos_orientation():
     return curr_arm_pos, curr_arm_orientation
 
 def move_to(position, orientation=[0.0, 1.0, 0.0 ,0.0]):
-    print("Moving to", position, orientation)
+    # print("Moving to", position, orientation)
     request = GetPositionIKRequest()
     request.ik_request.group_name = 'right_arm'
     link = 'right_gripper_tip'
@@ -250,7 +251,7 @@ def move_to(position, orientation=[0.0, 1.0, 0.0 ,0.0]):
 
     try:
         response = compute_ik(request)
-        print(response)
+        #print(response)
         group = MoveGroupCommander("right_arm")
 
         # Setting position and orientation target
@@ -421,8 +422,23 @@ def main():
             target_pos = [curr_pos[0] + 0.2, curr_pos[1], curr_pos[2]]
             target_orientation = [0.0, np.sqrt(2)/2, 0.0, np.sqrt(2)/2]
             input('Rotate camera')
-            move_to(target_pos, target_orientation)
+            # move_to(target_pos, target_orientation)
+            limb = intera_interface.Limb('right')
+            target_joint_angles = {
+                'right_j0': 0.367197265625, 
+                'right_j1': -0.683083984375, 
+                'right_j2': -0.320525390625, 
+                'right_j3': 1.2404873046875, 
+                'right_j4': 0.3167783203125, 
+                'right_j5': -0.5252392578125, 
+                'right_j6': 1.72457421875
+            }
+            curr_joint_angles = limb.joint_angles()     # dict: joint_name --> joint_angle
+            while not all(abs(curr_joint_angles[name] - target_joint_angles[name]) < 0.1 for name in curr_joint_angles):
+                limb.set_joint_positions(target_joint_angles)
+                curr_joint_angles = limb.joint_angles()
 
+            # Extract dropped postion
             tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
             tag_pos = [data[0] for data in tag_pos_and_orient]
             tag_orient = [data[1] for data in tag_pos_and_orient]
