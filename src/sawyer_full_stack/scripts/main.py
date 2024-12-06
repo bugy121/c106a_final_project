@@ -314,7 +314,7 @@ def main():
 
     if args.controller_name == "moveit":
 
-        for i in range(5):
+        for i, tag_number in enumerate(args.ar_marker):
     
             # Moveit planner
             planner = PathPlanner('right_arm')
@@ -322,7 +322,7 @@ def main():
             # Lookup the AR tag position.
             # tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
             # [0.5542645905705363, -0.2634062656404528, -0.1872946122276515]
-            tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
+            tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [tag_number]]
             tag_pos = [data[0] for data in tag_pos_and_orient]
             tag_orient = [data[1] for data in tag_pos_and_orient]
 
@@ -401,50 +401,51 @@ def main():
             curr_pos, curr_orient = get_current_pos_orientation()
             print(curr_pos, curr_orient)
             if i == 0:
-                target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] - 0.45])
+                target_pos = np.array([curr_pos[0], curr_pos[1], -0.18])
             else:
-                target_pos = np.array([curr_pos[0], curr_pos[1], prev_dropped_pos[2] + 0.05])       # prev_dropped_height + delta
+                target_pos = np.array([curr_pos[0], curr_pos[1], -0.18 + 0.04*i])       # TABLE_HEIGHT + BLOCK_HEIGHT * i
             input('Moving down')
             move_to(target_pos, curr_orient)
 
             input('Open the gripper')
             gripper = intera_interface.Gripper('right_gripper')
-            gripper.open()
+            gripper.open(0.02)
 
             curr_pos, curr_orient = get_current_pos_orientation()
+            prev_dropped_pos = curr_pos
             print(curr_pos, curr_orient)
-            target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.3])
+            target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.08])
             input('Moving up')
             move_to(target_pos, curr_orient)
 
-            curr_pos, curr_orient = get_current_pos_orientation()
-            print(curr_pos, curr_orient)
-            target_pos = [curr_pos[0] + 0.2, curr_pos[1], curr_pos[2]]
-            target_orientation = [0.0, np.sqrt(2)/2, 0.0, np.sqrt(2)/2]
-            input('Rotate camera')
-            # move_to(target_pos, target_orientation)
-            limb = intera_interface.Limb('right')
-            target_joint_angles = {
-                'right_j0': 0.367197265625, 
-                'right_j1': -0.683083984375, 
-                'right_j2': -0.320525390625, 
-                'right_j3': 1.2404873046875, 
-                'right_j4': 0.3167783203125, 
-                'right_j5': -0.5252392578125, 
-                'right_j6': 1.72457421875
-            }
-            curr_joint_angles = limb.joint_angles()     # dict: joint_name --> joint_angle
-            while not all(abs(curr_joint_angles[name] - target_joint_angles[name]) < 0.1 for name in curr_joint_angles):
-                limb.set_joint_positions(target_joint_angles)
-                curr_joint_angles = limb.joint_angles()
+            # curr_pos, curr_orient = get_current_pos_orientation()
+            # print(curr_pos, curr_orient)
+            # target_pos = [curr_pos[0] + 0.2, curr_pos[1], curr_pos[2]]
+            # target_orientation = [0.0, np.sqrt(2)/2, 0.0, np.sqrt(2)/2]
+            # input('Rotate camera')
+            # # move_to(target_pos, target_orientation)
+            # limb = intera_interface.Limb('right')
+            # target_joint_angles = {
+            #     'right_j0': 0.367197265625, 
+            #     'right_j1': -0.683083984375, 
+            #     'right_j2': -0.320525390625, 
+            #     'right_j3': 1.2404873046875, 
+            #     'right_j4': 0.3167783203125, 
+            #     'right_j5': -0.5252392578125, 
+            #     'right_j6': 1.72457421875
+            # }
+            # curr_joint_angles = limb.joint_angles()     # dict: joint_name --> joint_angle
+            # while not all(abs(curr_joint_angles[name] - target_joint_angles[name]) < 0.1 for name in curr_joint_angles):
+            #     limb.set_joint_positions(target_joint_angles)
+            #     curr_joint_angles = limb.joint_angles()
 
             # Extract dropped postion
-            tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
-            tag_pos = [data[0] for data in tag_pos_and_orient]
-            tag_orient = [data[1] for data in tag_pos_and_orient]
-            curr_tag_pos = list(tag_pos[0])
-            prev_dropped_pos = curr_tag_pos
-            print("Dropped postion:", prev_dropped_pos)
+            # tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [tag_number]]
+            # tag_pos = [data[0] for data in tag_pos_and_orient]
+            # tag_orient = [data[1] for data in tag_pos_and_orient]
+            # curr_tag_pos = list(tag_pos[0])
+            # prev_dropped_pos = curr_tag_pos
+            # print("Dropped postion:", prev_dropped_pos)
 
             input('Tuck the arm')
             tuck()
