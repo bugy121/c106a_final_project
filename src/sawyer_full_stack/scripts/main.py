@@ -34,6 +34,7 @@ import os
 import tf
 import intera_interface
 
+USING_AMIR = False
 
 def tuck():
     """
@@ -109,7 +110,7 @@ def lookup_tag(tag_number, limb, kin, ik_solver, planner, args):
 
             request = GetPositionIKRequest()
             request.ik_request.group_name = 'right_arm'
-            link = 'right_gripper_tip'
+            link = 'right_gripper_tip' if not USING_AMIR else 'stp_022312TP99620_tip_1'
             request.ik_request.ik_link_name = link
             request.ik_request.pose_stamped.header.frame_id = 'base'
 
@@ -231,38 +232,49 @@ def get_current_pos_orientation():
     curr_arm_orientation = np.array([getattr(trans_base_arm.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
     return curr_arm_pos, curr_arm_orientation
 
-def move_to(position, orientation=[0.0, 1.0, 0.0 ,0.0]):
-    # print("Moving to", position, orientation)
-    request = GetPositionIKRequest()
-    request.ik_request.group_name = 'right_arm'
-    link = 'right_gripper_tip'
-    request.ik_request.ik_link_name = link
-    request.ik_request.pose_stamped.header.frame_id = 'base'
+def move_to(target_position, target_orientation=[0.0, 1.0, 0.0 ,0.0], current_position=[0,0,0]):
+    # # print("Moving to", position, orientation)
+    # request = GetPositionIKRequest()
+    # request.ik_request.group_name = 'right_arm'
+    # link = 'right_gripper_tip' if not USING_AMIR else 'stp_022312TP99620_tip_1'
+    # request.ik_request.ik_link_name = link
+    # request.ik_request.pose_stamped.header.frame_id = 'base'
 
-    request.ik_request.pose_stamped.pose.position.x = position[0]
-    request.ik_request.pose_stamped.pose.position.y = position[1]
-    request.ik_request.pose_stamped.pose.position.z = position[2]
-    request.ik_request.pose_stamped.pose.orientation.x = orientation[0]
-    request.ik_request.pose_stamped.pose.orientation.y = orientation[1]
-    request.ik_request.pose_stamped.pose.orientation.z = orientation[2]
-    request.ik_request.pose_stamped.pose.orientation.w = orientation[3]
+    # request.ik_request.pose_stamped.pose.position.x = position[0]
+    # request.ik_request.pose_stamped.pose.position.y = position[1]
+    # request.ik_request.pose_stamped.pose.position.z = position[2]
+    # request.ik_request.pose_stamped.pose.orientation.x = orientation[0]
+    # request.ik_request.pose_stamped.pose.orientation.y = orientation[1]
+    # request.ik_request.pose_stamped.pose.orientation.z = orientation[2]
+    # request.ik_request.pose_stamped.pose.orientation.w = orientation[3]
 
-    compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
+    # compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
 
-    try:
-        response = compute_ik(request)
-        #print(response)
-        group = MoveGroupCommander("right_arm")
+    # try:
+    #     response = compute_ik(request)
+    #     #print(response)
+    #     group = MoveGroupCommander("right_arm")
 
-        # Setting position and orientation target
-        group.set_pose_target(request.ik_request.pose_stamped)
+    #     # Setting position and orientation target
+    #     request.pose_stamped.header.stamp.secs = 3.0
+    #     group.set_pose_target(request.ik_request.pose_stamped)
 
-        # Plan IK
-        plan = group.plan()
-        group.execute(plan[1])
+    #     # Plan IK
+    #     plan = group.plan()
+    #     breakpoint()
+    #     group.execute(plan[1])
         
-    except rospy.ServiceException as e:
-        print("Service call failed: ", e)
+    # except rospy.ServiceException as e:
+    #     print("Service call failed: ", e)
+    ik_solver = IK("base", "right_gripper_tip" if not USING_AMIR else "stp_022312TP99620_tip_1")
+    limb = intera_interface.Limb("right")
+    kin = sawyer_kinematics("right")
+    curr_position, curr_orient = get_current_pos_orientation()
+    trajectory = LinearTrajectory(start_position=np.array(current_position), goal_position=np.array(target_position), total_time=9)
+    path = MotionPath(limb, kin, ik_solver, trajectory)
+    robo_traj = path.to_robot_trajectory(50, True)
+    planner = PathPlanner('right_arm')
+    planner.execute(robo_traj)
 
 
 def main():
@@ -298,16 +310,18 @@ def main():
         'How many waypoints for the :obj:`moveit_msgs.msg.RobotTrajectory`.  Default: 300'
     )
     parser.add_argument('--log', action='store_true', help='plots controller performance')
+    parser.add_argument('--amir', action='store_true', help='sets tf frames for use with Amir robot')
     args = parser.parse_args()
 
+    global USING_AMIR
+    USING_AMIR = args.amir
 
     rospy.init_node('moveit_node')
     
     input('Tuck the arm')
     tuck()
-    
     # this is used for sending commands (velocity, torque, etc) to the robot
-    ik_solver = IK("base", "right_gripper_tip")
+    ik_solver = IK("base", "right_gripper_tip" if not USING_AMIR else 'stp_022312TP99620_tip_1')
     limb = intera_interface.Limb("right")
     kin = sawyer_kinematics("right")
 
@@ -364,7 +378,7 @@ def main():
             input('Begin moving downward')
             curr_tag_pos = [list(tag_pos[0])]
             # curr_tag_pos[0][2] += 0.05
-            curr_tag_pos[0][2] = -0.16  # HARDCODE TABLE HEIGHT
+            curr_tag_pos[0][2] = -0.1  # HARDCODE TABLE HEIGHT
             curr_tag_pos[0][1] += 0.02
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
