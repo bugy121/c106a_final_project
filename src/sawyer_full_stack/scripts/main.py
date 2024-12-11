@@ -28,11 +28,13 @@ from sawyer_pykdl import sawyer_kinematics
 
 from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest, GetPositionIKResponse
 from geometry_msgs.msg import PoseStamped
-from moveit_commander import MoveGroupCommander
+from moveit_commander import MoveGroupCommander, RobotCommander
 
 import os
 import tf
 import intera_interface
+
+from time import sleep
 
 USING_AMIR = False
 
@@ -50,10 +52,13 @@ def tuck():
     # launch.start()
     # else:
     #     print('Canceled. Not tucking the arm.')
+    # tuck_two_uh()
+    # return
     os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
     os.system("./set_joint_speed.py")
 
-def lookup_tag(tag_number, limb, kin, ik_solver, planner, args):
+@profile
+def lookup_tag(tag_number, limb, kin, ik_solver, planner, args, move_to):
     """
     Given an AR tag number, this returns the position of the AR tag in the robot's base frame.
     You can use either this function or try starting the scripts/tag_pub.py script.  More info
@@ -79,71 +84,17 @@ def lookup_tag(tag_number, limb, kin, ik_solver, planner, args):
             # TODO: lookup the transform and save it in trans
             # The rospy.Time(0) is the latest available 
             # The rospy.Duration(10.0) is the amount of time to wait for the transform to be available before throwing an exception
-            trans = tfBuffer.lookup_transform("base", "ar_marker_"+str(tag_number), rospy.Time(0), rospy.Duration(10.0))
+            print("BEGIN TRY")
+            trans = tfBuffer.lookup_transform("base", "ar_marker_"+str(tag_number), rospy.Time(0), rospy.Duration(0.5))
             found_ar_tag = True
+            print("END TRY")
         except Exception as e:
             print(e)
             print("Retrying ...")
 
-            ### ATTEMPT 1 ###
-            # # Try moving left to find the AR tag 
-            # trans_base_arm = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
-            # curr_arm_pos = np.array([getattr(trans_base_arm.transform.translation, dim) for dim in ('x', 'y', 'z')])
-            # new_arm_pos = np.array([curr_arm_pos[0], curr_arm_pos[1] + 0.1, curr_arm_pos[2]])
-            # # debug:
-            # # new_arm_pos = [0.6997413608390327, 0.04754310973086273, 0.21876114330591026]
-            # print("CURRENT POS:", curr_arm_pos)
-            # print("TARGET POS:", new_arm_pos)
-            # # robot_trajectory = get_trajectory(limb, kin, ik_solver, arm_pos, args)
-            # trajectory = LinearTrajectory(start_position=curr_arm_pos, goal_position=new_arm_pos, total_time=10)
-            # path = MotionPath(limb, kin, ik_solver, trajectory)
-            # robot_trajectory = path.to_robot_trajectory(args.num_way, True)
-
-            # input('Move to starting position of trajectory')
-            # breakpoint()
-            # trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
-            # plan = planner.plan_to_joint_pos(trajectory_start_pos)
-            # planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
-
-            # input('Searching for AR tag')
-            # planner.execute_plan(robot_trajectory)
-
-            request = GetPositionIKRequest()
-            request.ik_request.group_name = 'right_arm'
-            link = 'right_gripper_tip' if not USING_AMIR else 'stp_022312TP99620_tip_1'
-            request.ik_request.ik_link_name = link
-            request.ik_request.pose_stamped.header.frame_id = 'base'
-
-            trans_base_arm = tfBuffer.lookup_transform('base', 'right_hand', rospy.Time(0), rospy.Duration(10.0))
-            curr_arm_pos = np.array([getattr(trans_base_arm.transform.translation, dim) for dim in ('x', 'y', 'z')])
-            curr_arm_orientation = np.array([getattr(trans_base_arm.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
-            # new_arm_pos = np.array([curr_arm_pos[0], curr_arm_pos[1] + 0.1, curr_arm_pos[2]])    
-
-            request.ik_request.pose_stamped.pose.position.x = curr_arm_pos[0] + 0.1
-            request.ik_request.pose_stamped.pose.position.y = curr_arm_pos[1] - 0.2
-            request.ik_request.pose_stamped.pose.position.z = curr_arm_pos[2]   
-            request.ik_request.pose_stamped.pose.orientation.x = curr_arm_orientation[0]
-            request.ik_request.pose_stamped.pose.orientation.y = curr_arm_orientation[1]
-            request.ik_request.pose_stamped.pose.orientation.z = curr_arm_orientation[2]
-            request.ik_request.pose_stamped.pose.orientation.w = curr_arm_orientation[3]
-
-            compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
-
-            try:
-                response = compute_ik(request)
-                print(response)
-                group = MoveGroupCommander("right_arm")
-
-                # Setting position and orientation target
-                group.set_pose_target(request.ik_request.pose_stamped)
-
-                # Plan IK
-                plan = group.plan()
-                input("Finding AR tag")
-                group.execute(plan[1])
-                
-            except rospy.ServiceException as e:
-                print("Service call failed: ", e)
+            cur_pos, cur_orient = get_current_pos_orientation()
+            move_to(np.array([cur_pos[0]+0.1, cur_pos[1]-0.2, cur_pos[2]]), cur_orient, scale_factor=0.33)
+            sleep(1)
 
     tag_pos = [getattr(trans.transform.translation, dim) for dim in ('x', 'y', 'z')]
     tag_orientation = [getattr(trans.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')]
@@ -232,51 +183,58 @@ def get_current_pos_orientation():
     curr_arm_orientation = np.array([getattr(trans_base_arm.transform.rotation, dim) for dim in ('x', 'y', 'z', 'w')])
     return curr_arm_pos, curr_arm_orientation
 
-def move_to(target_position, target_orientation=[0.0, 1.0, 0.0 ,0.0], current_position=[0,0,0]):
-    # # print("Moving to", position, orientation)
-    # request = GetPositionIKRequest()
-    # request.ik_request.group_name = 'right_arm'
-    # link = 'right_gripper_tip' if not USING_AMIR else 'stp_022312TP99620_tip_1'
-    # request.ik_request.ik_link_name = link
-    # request.ik_request.pose_stamped.header.frame_id = 'base'
+def _move_to(target_position, target_orientation=[0.0, 1.0, 0.0 ,0.0], current_position=[0,0,0], scale_factor=0.33, planner=PathPlanner('right_arm'), group=MoveGroupCommander("right_arm")):
+    # print("Moving to", position, orientation)
+    request = GetPositionIKRequest()
+    request.ik_request.group_name = 'right_arm'
+    link = 'right_gripper_tip' if not USING_AMIR else 'stp_022312TP99620_tip_1'
+    request.ik_request.ik_link_name = link
+    request.ik_request.pose_stamped.header.frame_id = 'base'
 
-    # request.ik_request.pose_stamped.pose.position.x = position[0]
-    # request.ik_request.pose_stamped.pose.position.y = position[1]
-    # request.ik_request.pose_stamped.pose.position.z = position[2]
-    # request.ik_request.pose_stamped.pose.orientation.x = orientation[0]
-    # request.ik_request.pose_stamped.pose.orientation.y = orientation[1]
-    # request.ik_request.pose_stamped.pose.orientation.z = orientation[2]
-    # request.ik_request.pose_stamped.pose.orientation.w = orientation[3]
+    request.ik_request.pose_stamped.pose.position.x = target_position[0]
+    request.ik_request.pose_stamped.pose.position.y = target_position[1]
+    request.ik_request.pose_stamped.pose.position.z = target_position[2]
+    request.ik_request.pose_stamped.pose.orientation.x = target_orientation[0]
+    request.ik_request.pose_stamped.pose.orientation.y = target_orientation[1]
+    request.ik_request.pose_stamped.pose.orientation.z = target_orientation[2]
+    request.ik_request.pose_stamped.pose.orientation.w = target_orientation[3]
 
-    # compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
+    compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
 
-    # try:
-    #     response = compute_ik(request)
-    #     #print(response)
-    #     group = MoveGroupCommander("right_arm")
+    try:
+        response = compute_ik(request)
 
-    #     # Setting position and orientation target
-    #     request.pose_stamped.header.stamp.secs = 3.0
-    #     group.set_pose_target(request.ik_request.pose_stamped)
+        # Setting position and orientation target
+        request.ik_request.pose_stamped.header.stamp.secs = 3.0
+        group.set_pose_target(request.ik_request.pose_stamped)
 
-    #     # Plan IK
-    #     plan = group.plan()
-    #     breakpoint()
-    #     group.execute(plan[1])
+        # Plan IK
+        plan = group.plan()
+        plan = group.retime_trajectory(
+                        RobotCommander().get_current_state(), 
+                        plan[1], 
+                        scale_factor
+                    )
+        print("PLAN HERE:")
+        print(plan)
+        print("END PLAN")
+        # plan = planner.retime_trajectory(plan, dt/9.0) # default trajectory takes 9 seconds, ig?
+        group.execute(plan)
         
-    # except rospy.ServiceException as e:
-    #     print("Service call failed: ", e)
-    ik_solver = IK("base", "right_gripper_tip" if not USING_AMIR else "stp_022312TP99620_tip_1")
-    limb = intera_interface.Limb("right")
-    kin = sawyer_kinematics("right")
-    curr_position, curr_orient = get_current_pos_orientation()
-    trajectory = LinearTrajectory(start_position=np.array(current_position), goal_position=np.array(target_position), total_time=9)
-    path = MotionPath(limb, kin, ik_solver, trajectory)
-    robo_traj = path.to_robot_trajectory(50, True)
-    planner = PathPlanner('right_arm')
-    planner.execute(robo_traj)
+    except rospy.ServiceException as e:
+        print("Service call failed: ", e)
+    # return
+    # ik_solver = IK("base", "right_gripper_tip" if not USING_AMIR else "stp_022312TP99620_tip_1")
+    # limb = intera_interface.Limb("right")
+    # kin = sawyer_kinematics("right")
+    # curr_position, curr_orient = get_current_pos_orientation()
+    # trajectory = LinearTrajectory(start_position=np.array(current_position), goal_position=np.array(target_position), total_time=9, orientation=np.array(curr_orient))
+    # path = MotionPath(limb, kin, ik_solver, trajectory)
+    # robo_traj = path.to_robot_trajectory(50, True)
+    # planner = PathPlanner('right_arm')
+    # planner.execute(robo_traj)
 
-
+@profile
 def main():
     """
     Examples of how to run me:
@@ -307,25 +265,31 @@ def main():
         Default: None"""
     )
     parser.add_argument('-num_way', type=int, default=50, help=
-        'How many waypoints for the :obj:`moveit_msgs.msg.RobotTrajectory`.  Default: 300'
+        'How many waypoints for the :obj:`moveit_msgs.msg.RobotTrajectory`.  Default: 50'
     )
     parser.add_argument('--log', action='store_true', help='plots controller performance')
     parser.add_argument('--amir', action='store_true', help='sets tf frames for use with Amir robot')
+    parser.add_argument('--table_height', '-T', type=float, default=-0.1, help='sets the height of the table')
+    parser.add_argument('--wait', action='store_true', help='waits for [enter] with `input()` before each move')
+
     args = parser.parse_args()
+
+    input_fixed = lambda prompt: input(prompt) if args.wait else None
 
     global USING_AMIR
     USING_AMIR = args.amir
 
     rospy.init_node('moveit_node')
     
-    input('Tuck the arm')
+    input_fixed('Tuck the arm')
     tuck()
     # this is used for sending commands (velocity, torque, etc) to the robot
     ik_solver = IK("base", "right_gripper_tip" if not USING_AMIR else 'stp_022312TP99620_tip_1')
     limb = intera_interface.Limb("right")
     kin = sawyer_kinematics("right")
-
-
+    planner = PathPlanner('right_arm')
+    movegroup = MoveGroupCommander('right_arm')
+    move_to = lambda *args, **kwargs: _move_to(*args, **kwargs, planner=planner, group=movegroup)
     if args.controller_name == "moveit":
 
         for i, tag_number in enumerate(args.ar_marker):
@@ -336,107 +300,114 @@ def main():
             # Lookup the AR tag position.
             # tag_pos = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [i]]
             # [0.5542645905705363, -0.2634062656404528, -0.1872946122276515]
-            tag_pos_and_orient = [lookup_tag(marker, limb, kin, ik_solver, planner, args) for marker in [tag_number]]
-            tag_pos = [data[0] for data in tag_pos_and_orient]
-            tag_orient = [data[1] for data in tag_pos_and_orient]
+            
+            tag_pos, tag_orient = lookup_tag(tag_number, limb, kin, ik_solver, planner, args, move_to = move_to)
+            # tag_pos = [data[0] for data in tag_pos_and_orient]
+            # tag_orient = [data[1] for data in tag_pos_and_orient]
 
-            input(f"ITERATION {i} AR TAG POS: {tag_pos[0]}")
+            print(f"ITERATION {i} AR TAG POS: {tag_pos}")
             # ITERATION 0 AR TAG POS: [ 0.78945311 -0.26583711 -0.23792368]
             # ITERATION 1 AR TAG POS: [ 0.7069352  -0.24560152 -0.18347042]
             
             # Get the trajectory from the robot arm to above the cube
-            curr_tag_pos = [list(tag_pos[0])]
+            curr_tag_pos = [list(tag_pos)]
             curr_tag_pos[0][2] += 0.3
             curr_tag_pos[0][1] += 0.02
             target_pos = curr_tag_pos[0]
-            input("Moving to above the block")
+            input_fixed("Moving to above the block")
             move_to(target_pos)
             #robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args) 
 
-            # input('Tuck the arm')
+            # input_fixed('Tuck the arm')
             # tuck()
 
-            # input('Move to starting position of trajectory')
+            # input_fixed('Move to starting position of trajectory')
             # trajectory_start_pos = robot_trajectory.joint_trajectory.points[0].positions
             # plan = planner.plan_to_joint_pos(trajectory_start_pos)
             # planner.execute_plan(plan[1])       # index-1 is the joint_trajectory variable
 
-            # input('Move to above the cube') 
+            # input_fixed('Move to above the cube') 
             # planner.execute_plan(robot_trajectory)
 
-            input('Open the gripper')
+            input_fixed('Open the gripper')
             gripper = intera_interface.Gripper('right_gripper')
             gripper.open()
 
             # Move down to the block, while also rotate gripper to match the block's orientation (screw motion)
-            curr_tag_orient = list(tag_orient[0])
+            curr_tag_orient = list(tag_orient)
             (tag_row, tag_pitch, tag_yaw) = tf.transformations.euler_from_quaternion(curr_tag_orient)
             curr_arm_pos, curr_arm_orient = get_current_pos_orientation()
             (row, pitch, yaw) = tf.transformations.euler_from_quaternion(curr_arm_orient)
             target_tag_orientation = tf.transformations.quaternion_from_euler(row, pitch, yaw+tag_yaw%(np.pi/2))
             # (new_row, new_pitch, new_yaw) = tf.transformations.euler_from_quaternion(target_tag_orientation)
-            input('Begin moving downward')
-            curr_tag_pos = [list(tag_pos[0])]
+            input_fixed('Begin moving downward')
+            curr_tag_pos = [list(tag_pos)]
             # curr_tag_pos[0][2] += 0.05
-            curr_tag_pos[0][2] = -0.1  # HARDCODE TABLE HEIGHT
+            curr_tag_pos[0][2] = args.table_height  # HARDCODE TABLE HEIGHT
             curr_tag_pos[0][1] += 0.02
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
             move_to(curr_tag_pos[0], target_tag_orientation)
+            sleep(0.5)
 
-            input('Close the gripper')
+            input_fixed('Close the gripper')
             gripper = intera_interface.Gripper('right_gripper')        
             gripper.close()
 
-            input('Begin moving upward')
+            input_fixed('Begin moving upward')
             _, curr_arm_orient = get_current_pos_orientation()
             (row, pitch, yaw) = tf.transformations.euler_from_quaternion(curr_arm_orient)
             target_tag_orientation = tf.transformations.quaternion_from_euler(row, pitch, yaw-tag_yaw%(np.pi/2))
             # (new_row, new_pitch, new_yaw) = tf.transformations.euler_from_quaternion(target_tag_orientation)
-            curr_tag_pos = [list(tag_pos[0])]
-            curr_tag_pos[0][2] += 0.4
+            curr_tag_pos = [list(tag_pos)]
+            # curr_tag_pos[0][2] += 0.4
+            z_clearance = 0.2
+            curr_tag_pos[0][2] = args.table_height + 0.0508*i + z_clearance
             # robot_trajectory = get_trajectory(limb, kin, ik_solver, curr_tag_pos, args)
             # planner.execute_plan(robot_trajectory)
             move_to(curr_tag_pos[0], target_tag_orientation)
 
-            # Moving to above the stack position
+            # if i == 0:
+            #     target_pos = np.array([0.74, 0.3, 0.16])                # use hard-cose pos on first block
+            #     target_orientation = np.array([0.0,1.0,0.0,0.0])
+            # else:
+            #     target_pos = [prev_dropped_pos[0], prev_dropped_pos[1], 0.16]   # only care about x,y position, height is above the stack location
+            #     target_orientation = np.array([0.0,1.0,0.0,0.0])
+
+            target_pos = np.array([0.74, 0.3, args.table_height + 0.0508*i + z_clearance])
+            target_orientation = np.array([0.0, 1.0, 0.0, 0.0])
+            input_fixed('Move to above the stack postion')
+            move_to(target_pos, target_orientation, scale_factor=0.5)
+
             # curr_pos, curr_orient = get_current_pos_orientation()
-            # print(curr_pos, curr_orient)
-            # target_pos = np.array([curr_pos[0], -curr_pos[1], curr_pos[2]])
-            if i == 0:
-                target_pos = np.array([0.74, 0.3, 0.16])                # use hard-cose pos on first block
-                target_orientation = np.array([0.0,1.0,0.0,0.0])
-            else:
-                target_pos = [prev_dropped_pos[0], prev_dropped_pos[1], 0.16]   # only care about x,y position, height is above the stack location
-                target_orientation = np.array([0.0,1.0,0.0,0.0])
-            input('Move to above the stack postion')
-            move_to(target_pos, target_orientation)
 
-            curr_pos, curr_orient = get_current_pos_orientation()
-            print(curr_pos, curr_orient)
-            if i == 0:
-                target_pos = np.array([curr_pos[0], curr_pos[1], -0.18])
-            else:
-                target_pos = np.array([curr_pos[0], curr_pos[1], -0.18 + 0.04*i])       # TABLE_HEIGHT + BLOCK_HEIGHT * i
-            input('Moving down')
-            move_to(target_pos, curr_orient)
+            target_pos = np.array([target_pos[0], target_pos[1], args.table_height + 0.0508*i])
+            input_fixed('Moving down')
+            move_to(target_pos, target_orientation, scale_factor=0.11)
+            sleep(0.5)
 
-            input('Open the gripper')
+
+            input_fixed('Open the gripper')
             gripper = intera_interface.Gripper('right_gripper')
-            gripper.open(0.02)
+            gripper.open(0.018)
 
             curr_pos, curr_orient = get_current_pos_orientation()
             prev_dropped_pos = curr_pos
             print(curr_pos, curr_orient)
             target_pos = np.array([curr_pos[0], curr_pos[1], curr_pos[2] + 0.08])
-            input('Moving up')
+            input_fixed('Moving up')
             move_to(target_pos, curr_orient)
+
+            # cur_pos, cur_orient = get_current_pos_orientation()
+            target_pos = np.array([target_pos[0], target_pos[1]-0.3, target_pos[2]])
+            input_fixed("moving away from stack")
+            move_to(target_pos, curr_orient, scale_factor=0.5)
 
             # curr_pos, curr_orient = get_current_pos_orientation()
             # print(curr_pos, curr_orient)
             # target_pos = [curr_pos[0] + 0.2, curr_pos[1], curr_pos[2]]
             # target_orientation = [0.0, np.sqrt(2)/2, 0.0, np.sqrt(2)/2]
-            # input('Rotate camera')
+            # input_fixed('Rotate camera')
             # # move_to(target_pos, target_orientation)
             # limb = intera_interface.Limb('right')
             # target_joint_angles = {
@@ -461,15 +432,13 @@ def main():
             # prev_dropped_pos = curr_tag_pos
             # print("Dropped postion:", prev_dropped_pos)
 
-            input('Tuck the arm')
+            input_fixed('Tuck the arm')
             tuck()
-            # os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
-            # os.system("./set_joint_speed.py")
         
     else:
         controller = get_controller(args.controller_name, limb, kin)
         try:
-            input('Press <Enter> to execute the trajectory using YOUR OWN controller')
+            input_fixed('Press <Enter> to execute the trajectory using YOUR OWN controller')
         except KeyboardInterrupt:
             sys.exit()
         # execute the path using your own controller.

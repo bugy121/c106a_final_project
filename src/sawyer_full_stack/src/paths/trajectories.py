@@ -150,7 +150,7 @@ class Trajectory:
             print("Saved animation to %s.gif" % trajectory_name)
 
 class LinearTrajectory(Trajectory):
-    def __init__(self, start_position, goal_position, total_time):
+    def __init__(self, start_position, goal_position, total_time, orientation=np.array([0, 1, 0, 0])):
 
         Trajectory.__init__(self, total_time)
         self.start_position = start_position
@@ -158,7 +158,7 @@ class LinearTrajectory(Trajectory):
         self.distance = self.goal_position - self.start_position
         self.acceleration = (self.distance * 4.0) / (self.total_time ** 2) # keep constant magnitude acceleration
         self.v_max = (self.total_time / 2.0) * self.acceleration # maximum velocity magnitude
-        self.desired_orientation = np.array([0, 1, 0, 0])
+        self.desired_orientation = orientation
 
     def target_pose(self, time):
         """

@@ -117,7 +117,8 @@ class MotionPath:
             # rospy.loginfo("SUCCESS!")
             # Format solution into Limb API-compatible dictionary
             return np.array(response.joints[0].position)
-            
+        print(response)
+        print(response.result_type)
         return None
 
     def trajectory_point(self, t, jointspace):
