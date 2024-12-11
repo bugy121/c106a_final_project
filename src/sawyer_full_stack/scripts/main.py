@@ -57,7 +57,6 @@ def tuck():
     os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
     os.system("./set_joint_speed.py")
 
-@profile
 def lookup_tag(tag_number, limb, kin, ik_solver, planner, args, move_to):
     """
     Given an AR tag number, this returns the position of the AR tag in the robot's base frame.
@@ -234,7 +233,6 @@ def _move_to(target_position, target_orientation=[0.0, 1.0, 0.0 ,0.0], current_p
     # planner = PathPlanner('right_arm')
     # planner.execute(robo_traj)
 
-@profile
 def main():
     """
     Examples of how to run me:
