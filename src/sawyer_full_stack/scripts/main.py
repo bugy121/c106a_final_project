@@ -57,7 +57,6 @@ def tuck():
     os.system("./go_to_joint_angles.py -q 0 -0.5 0 1.5 0 -1 1.7")
     os.system("./set_joint_speed.py")
 
-@profile
 def lookup_tag(tag_number, limb, kin, ik_solver, planner, args, move_to):
     """
     Given an AR tag number, this returns the position of the AR tag in the robot's base frame.
@@ -205,11 +204,12 @@ def _move_to(target_position, target_orientation=[0.0, 1.0, 0.0 ,0.0], current_p
         response = compute_ik(request)
 
         # Setting position and orientation target
-        request.ik_request.pose_stamped.header.stamp.secs = 3.0
+        start_pose = group.get_current_pose(link)
         group.set_pose_target(request.ik_request.pose_stamped)
-
+        group.set_max_acceleration_scaling_factor(0.1)
+        plan, _ = group.compute_cartesian_path([start_pose, request.ik_request.pose_stamped], 0.01, 0.01, avoid_collisions = True)
         # Plan IK
-        plan = group.plan()
+        # plan = group.plan()
         plan = group.retime_trajectory(
                         RobotCommander().get_current_state(), 
                         plan[1], 
@@ -234,7 +234,6 @@ def _move_to(target_position, target_orientation=[0.0, 1.0, 0.0 ,0.0], current_p
     # planner = PathPlanner('right_arm')
     # planner.execute(robo_traj)
 
-@profile
 def main():
     """
     Examples of how to run me:
